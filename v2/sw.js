@@ -1,4 +1,4 @@
-const CACHE = "webar-v2";
+const CACHE = "webar-v2-2";
 const ASSETS = ["./", "./index.html", "./labels.js", "./app.js", "./yolo.js", "./style.css"];
 
 self.addEventListener("install", e => {
