@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Language Lens Bridge</title>
+</head>
+<body>
+<script>
+window['ai_edge_gallery_get_result'] = async function(data) {
+  try {
+    var params = JSON.parse(data);
+    var lang = (params.language || 'ja').toString();
+    var langName = (params.languageName || 'Japanese').toString();
+    var url = 'webview.html?lang=' + encodeURIComponent(lang) + '&langName=' + encodeURIComponent(langName);
+    return JSON.stringify({
+      result: 'AR camera opened for ' + langName + '. Point at any object!',
+      webview: {
+        url: url,
+        aspectRatio: 0.75
+      }
+    });
+  } catch (e) {
+    return JSON.stringify({ error: 'Language Lens error: ' + e.message });
+  }
+};
+</script>
+</body>
+</html>
