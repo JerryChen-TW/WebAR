@@ -1,7 +1,6 @@
 // YOLOv8n ONNX inference — iOS compatible
 
-const MODEL_URL =
-  "https://huggingface.co/Xenova/yolov8n/resolve/main/onnx/model_quantized.onnx";
+const MODEL_URL = "./yolov8n.onnx";
 
 const INPUT_SIZE  = 640;
 const CONF_THRESH = 0.35;
