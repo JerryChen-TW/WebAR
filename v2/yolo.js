@@ -2,7 +2,7 @@
 
 const MODEL_URL = "./yolov8n.onnx";
 
-const INPUT_SIZE  = 640;
+const INPUT_SIZE  = 320; // 640→320 reduces memory 4x, faster on mobile
 const CONF_THRESH = 0.35;
 const IOU_THRESH  = 0.45;
 const NUM_CLASSES = 80;
@@ -70,7 +70,8 @@ export async function loadModel(onProgress) {
   onProgress?.("Initialising model…");
   try {
     session = await ort.InferenceSession.create(modelBuffer, {
-      executionProviders: ["webgl", "wasm"]
+      executionProviders: ["wasm"],
+      sessionOptions: { graphOptimizationLevel: "all" }
     });
   } catch (e) {
     throw new Error(`Model init failed: ${e.message}`);
@@ -125,7 +126,7 @@ export async function runInference(float32) {
 
 // ── Post-process ─────────────────────────────────────────────────────────────
 export function postprocess(raw, { scaleX, scaleY, padL, padT }, origW, origH) {
-  const N    = 8400;
+  const N    = rawOutput.length / (4 + NUM_CLASSES); // auto-detect from output shape
   const dets = [];
 
   for (let i = 0; i < N; i++) {
