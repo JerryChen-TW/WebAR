@@ -189,9 +189,8 @@ async function init() {
     await loadModel(msg => { loadTxt.textContent = msg; });
   } catch (e) {
     console.error(e);
-    status.textContent = "⚠️ Failed to load AI model.";
-    status.classList.remove("hidden");
-    loading.classList.add("hidden");
+    loadTxt.textContent = `⚠️ ${e.message}`;
+    // Keep loading overlay visible so user can read the error
     return;
   }
 

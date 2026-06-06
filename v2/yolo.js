@@ -1,19 +1,34 @@
-// YOLOv8 pre/post processing + ONNX inference
+// YOLOv8n ONNX inference — iOS compatible
 
-// Quantized model (~6MB vs ~12MB full). Swap URL for full precision if needed.
 const MODEL_URL =
   "https://huggingface.co/Xenova/yolov8n/resolve/main/onnx/model_quantized.onnx";
 
-const INPUT_SIZE   = 640;
-const CONF_THRESH  = 0.35;
-const IOU_THRESH   = 0.45;
-const NUM_CLASSES  = 80;
+const INPUT_SIZE  = 640;
+const CONF_THRESH = 0.35;
+const IOU_THRESH  = 0.45;
+const NUM_CLASSES = 80;
 
+let ort     = null; // module-level reference, imported once
 let session = null;
+
+// Reusable off-screen canvas (OffscreenCanvas not supported on iOS)
+let _canvas = null;
+let _ctx    = null;
+function getCanvas() {
+  if (!_canvas) {
+    _canvas = document.createElement("canvas");
+    _canvas.width  = INPUT_SIZE;
+    _canvas.height = INPUT_SIZE;
+    _ctx = _canvas.getContext("2d");
+  }
+  return { canvas: _canvas, ctx: _ctx };
+}
 
 // ── Load model ──────────────────────────────────────────────────────────────
 export async function loadModel(onProgress) {
-  const ort = await import(
+  onProgress?.("Loading ONNX runtime…");
+
+  ort = await import(
     "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.mjs"
   );
   ort.env.wasm.wasmPaths =
@@ -21,59 +36,66 @@ export async function loadModel(onProgress) {
 
   onProgress?.("Downloading YOLOv8 model…");
 
-  // Fetch with progress tracking
-  const resp = await fetch(MODEL_URL);
-  const total = parseInt(resp.headers.get("content-length") || "0");
-  const reader = resp.body.getReader();
-  const chunks = [];
-  let received = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.length;
-    if (total > 0) {
-      const pct = Math.round((received / total) * 100);
-      onProgress?.(`Downloading model… ${pct}%`);
+  let modelBuffer;
+  try {
+    const resp = await fetch(MODEL_URL);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const total  = parseInt(resp.headers.get("content-length") || "0");
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total > 0) {
+        const pct = Math.round((received / total) * 100);
+        onProgress?.(`Downloading model… ${pct}%`);
+      }
     }
+
+    // Merge chunks
+    const merged = new Uint8Array(received);
+    let offset = 0;
+    for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+    modelBuffer = merged.buffer;
+  } catch (e) {
+    throw new Error(`Model download failed: ${e.message}`);
   }
-  const modelBuffer = new Uint8Array(chunks.reduce((acc, c) => {
-    const merged = new Uint8Array(acc.length + c.length);
-    merged.set(acc); merged.set(c, acc.length);
-    return merged;
-  }, new Uint8Array(0)));
 
   onProgress?.("Initialising model…");
-  session = await ort.InferenceSession.create(modelBuffer.buffer, {
-    executionProviders: ["webgl", "wasm"]
-  });
-  return session;
+  try {
+    session = await ort.InferenceSession.create(modelBuffer, {
+      executionProviders: ["webgl", "wasm"]
+    });
+  } catch (e) {
+    throw new Error(`Model init failed: ${e.message}`);
+  }
 }
 
-// ── Pre-process ─────────────────────────────────────────────────────────────
-// Returns { tensor, scaleX, scaleY, padLeft, padTop }
+// ── Pre-process video frame → Float32Array ──────────────────────────────────
 export function preprocess(videoEl) {
-  const ort_ns = window.__ort__;          // set after import
   const vw = videoEl.videoWidth;
   const vh = videoEl.videoHeight;
 
-  // Letterbox: keep aspect ratio, pad to 640×640
+  // Letterbox scale + centre-pad to INPUT_SIZE×INPUT_SIZE
   const scale = Math.min(INPUT_SIZE / vw, INPUT_SIZE / vh);
   const nw    = Math.round(vw * scale);
   const nh    = Math.round(vh * scale);
   const padL  = Math.floor((INPUT_SIZE - nw) / 2);
   const padT  = Math.floor((INPUT_SIZE - nh) / 2);
 
-  const offscreen = new OffscreenCanvas(INPUT_SIZE, INPUT_SIZE);
-  const g = offscreen.getContext("2d");
-  g.fillStyle = "#808080";
-  g.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
-  g.drawImage(videoEl, padL, padT, nw, nh);
+  const { ctx } = getCanvas();
+  ctx.fillStyle = "#808080";
+  ctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+  ctx.drawImage(videoEl, padL, padT, nw, nh);
 
-  const imgData = g.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
-  const { data } = imgData;
+  const { data } = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
 
-  // NHWC → NCHW, normalize to [0,1]
+  // NHWC → NCHW float32 [0,1]
   const float32 = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
   const area    = INPUT_SIZE * INPUT_SIZE;
   for (let i = 0; i < area; i++) {
@@ -82,72 +104,52 @@ export function preprocess(videoEl) {
     float32[area*2 + i] = data[i * 4 + 2] / 255; // B
   }
 
-  return {
-    float32,
-    scaleX: 1 / scale,
-    scaleY: 1 / scale,
-    padL,
-    padT
-  };
+  return { float32, scaleX: 1 / scale, scaleY: 1 / scale, padL, padT };
 }
 
-// ── Run inference ────────────────────────────────────────────────────────────
+// ── Inference ───────────────────────────────────────────────────────────────
 export async function runInference(float32) {
-  const ort = await import(
-    "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.mjs"
-  );
   const tensor = new ort.Tensor("float32", float32, [1, 3, INPUT_SIZE, INPUT_SIZE]);
-  const feeds  = { images: tensor };
-  const result = await session.run(feeds);
-  // YOLOv8 output key is "output0"
-  return result["output0"].data; // shape [1, 84, 8400]
+  const result = await session.run({ images: tensor });
+  // YOLOv8 ONNX output: key "output0", shape [1, 84, 8400]
+  return result["output0"].data;
 }
 
 // ── Post-process ─────────────────────────────────────────────────────────────
-export function postprocess(rawOutput, { scaleX, scaleY, padL, padT }, origW, origH) {
-  // rawOutput: Float32Array of shape [84 × 8400] (batch dim stripped)
-  const numBoxes = 8400;
-  const detections = [];
+export function postprocess(raw, { scaleX, scaleY, padL, padT }, origW, origH) {
+  const N    = 8400;
+  const dets = [];
 
-  for (let i = 0; i < numBoxes; i++) {
-    // Find best class score
+  for (let i = 0; i < N; i++) {
     let maxScore = 0, maxClass = 0;
     for (let c = 0; c < NUM_CLASSES; c++) {
-      const score = rawOutput[(4 + c) * numBoxes + i];
-      if (score > maxScore) { maxScore = score; maxClass = c; }
+      const s = raw[(4 + c) * N + i];
+      if (s > maxScore) { maxScore = s; maxClass = c; }
     }
     if (maxScore < CONF_THRESH) continue;
 
-    // cx, cy, w, h in INPUT_SIZE space
-    const cx = rawOutput[0 * numBoxes + i];
-    const cy = rawOutput[1 * numBoxes + i];
-    const bw = rawOutput[2 * numBoxes + i];
-    const bh = rawOutput[3 * numBoxes + i];
+    const cx = raw[0 * N + i], cy = raw[1 * N + i];
+    const bw = raw[2 * N + i], bh = raw[3 * N + i];
 
-    // Remove letterbox padding, scale back to original video coords
-    const x1 = Math.max(0, ((cx - bw / 2) - padL) * scaleX);
-    const y1 = Math.max(0, ((cy - bh / 2) - padT) * scaleY);
-    const x2 = Math.min(origW, ((cx + bw / 2) - padL) * scaleX);
-    const y2 = Math.min(origH, ((cy + bh / 2) - padT) * scaleY);
-
-    detections.push({ x1, y1, x2, y2, score: maxScore, classIdx: maxClass });
+    dets.push({
+      x1: Math.max(0,     ((cx - bw / 2) - padL) * scaleX),
+      y1: Math.max(0,     ((cy - bh / 2) - padT) * scaleY),
+      x2: Math.min(origW, ((cx + bw / 2) - padL) * scaleX),
+      y2: Math.min(origH, ((cy + bh / 2) - padT) * scaleY),
+      score: maxScore, classIdx: maxClass
+    });
   }
-
-  return nms(detections);
+  return nms(dets);
 }
 
-// ── NMS ──────────────────────────────────────────────────────────────────────
 function nms(dets) {
   dets.sort((a, b) => b.score - a.score);
-  const keep = [];
-  const suppressed = new Uint8Array(dets.length);
-
+  const keep = [], sup = new Uint8Array(dets.length);
   for (let i = 0; i < dets.length; i++) {
-    if (suppressed[i]) continue;
+    if (sup[i]) continue;
     keep.push(dets[i]);
     for (let j = i + 1; j < dets.length; j++) {
-      if (suppressed[j]) continue;
-      if (iou(dets[i], dets[j]) > IOU_THRESH) suppressed[j] = 1;
+      if (!sup[j] && iou(dets[i], dets[j]) > IOU_THRESH) sup[j] = 1;
     }
   }
   return keep;
@@ -157,7 +159,5 @@ function iou(a, b) {
   const ix1 = Math.max(a.x1, b.x1), iy1 = Math.max(a.y1, b.y1);
   const ix2 = Math.min(a.x2, b.x2), iy2 = Math.min(a.y2, b.y2);
   const inter = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
-  const aA = (a.x2 - a.x1) * (a.y2 - a.y1);
-  const bA = (b.x2 - b.x1) * (b.y2 - b.y1);
-  return inter / (aA + bA - inter + 1e-6);
+  return inter / ((a.x2-a.x1)*(a.y2-a.y1) + (b.x2-b.x1)*(b.y2-b.y1) - inter + 1e-6);
 }
