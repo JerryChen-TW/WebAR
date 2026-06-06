@@ -8,7 +8,7 @@ const CONF_THRESH = 0.35;
 const IOU_THRESH  = 0.45;
 const NUM_CLASSES = 80;
 
-let ort     = null; // module-level reference, imported once
+// ort is loaded via <script> tag in index.html as window.ort (UMD bundle)
 let session = null;
 
 // Reusable off-screen canvas (OffscreenCanvas not supported on iOS)
@@ -28,9 +28,11 @@ function getCanvas() {
 export async function loadModel(onProgress) {
   onProgress?.("Loading ONNX runtime…");
 
-  ort = await import(
-    "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.mjs"
-  );
+  const ort = window.ort;
+  if (!ort) throw new Error("ONNX Runtime not loaded — check network");
+
+  // iOS: no SharedArrayBuffer, must use single thread
+  ort.env.wasm.numThreads = 1;
   ort.env.wasm.wasmPaths =
     "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
 
@@ -76,6 +78,12 @@ export async function loadModel(onProgress) {
   }
 }
 
+function getOrt() {
+  const ort = window.ort;
+  if (!ort) throw new Error("ONNX Runtime not available");
+  return ort;
+}
+
 // ── Pre-process video frame → Float32Array ──────────────────────────────────
 export function preprocess(videoEl) {
   const vw = videoEl.videoWidth;
@@ -109,6 +117,7 @@ export function preprocess(videoEl) {
 
 // ── Inference ───────────────────────────────────────────────────────────────
 export async function runInference(float32) {
+  const ort    = getOrt();
   const tensor = new ort.Tensor("float32", float32, [1, 3, INPUT_SIZE, INPUT_SIZE]);
   const result = await session.run({ images: tensor });
   // YOLOv8 ONNX output: key "output0", shape [1, 84, 8400]
