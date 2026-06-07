@@ -23,10 +23,16 @@
         }
 
         // Tell Gallery to open the embedded webview for this skill.
-        // NOTE: webview.html lives in the same folder as SKILL.md and index.html.
+        // NOTE: webview.html lives under assets/.
         return JSON.stringify({
+          result: 'Starting Language Lens AR view.',
           webview: {
-            url: 'webview.html?lang=' + encodeURIComponent(lang) + '&langName=' + encodeURIComponent(langName)
+            url:
+              'assets/webview.html?lang=' +
+              encodeURIComponent(lang) +
+              '&langName=' +
+              encodeURIComponent(langName),
+            aspectRatio: 1.0
           }
         });
       };
