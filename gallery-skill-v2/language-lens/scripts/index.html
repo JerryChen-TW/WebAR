@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Language Lens</title>
+  </head>
+  <body>
+    <script>
+      window['ai_edge_gallery_get_result'] = async (data) => {
+        var lang = 'en';
+        var langName = 'English';
+        try {
+          var obj = JSON.parse(data);
+          if (obj && obj.language) { lang = String(obj.language); }
+          if (obj && obj.languageName) { langName = String(obj.languageName); }
+        } catch (e) { /* keep defaults */ }
+        return JSON.stringify({
+          webview: {
+            url: 'webview.html?lang=' + encodeURIComponent(lang) + '&langName=' + encodeURIComponent(langName)
+          }
+        });
+      };
+    </script>
+  </body>
+</html>
