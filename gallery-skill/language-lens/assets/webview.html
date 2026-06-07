@@ -284,11 +284,11 @@ function showError(msg) {
   errMsg.textContent = msg;
 }
 
-// ─── MediaPipe ────────────────────────────────────────────────────────────
+// ─── MediaPipe (same bundle the official text-spinner skill uses) ──────────
 import {
   ObjectDetector,
   FilesetResolver
-} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm';
+} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs';
 
 let detector = null;
 let lastTime = -1;
@@ -296,7 +296,7 @@ let lastTime = -1;
 async function initDetector() {
   loadMsg.textContent = 'Loading object detection model…';
   const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
   );
   detector = await ObjectDetector.createFromOptions(vision, {
     baseOptions: {
