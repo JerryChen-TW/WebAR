@@ -328,22 +328,46 @@ async function startCamera() {
 }
 
 // ─── Drawing ──────────────────────────────────────────────────────────────
+// IMPORTANT: MediaPipe ObjectDetector returns boundingBox in PIXEL coordinates
+// of the input video frame (videoWidth x videoHeight), NOT normalized 0-1.
+// The <video> is shown with object-fit: cover, so we replicate that same
+// cover transform to map frame-pixels -> screen-pixels and keep boxes aligned.
 const BOX_COLOR   = '#1a73e8';
-const LABEL_BG    = 'rgba(10,10,10,0.72)';
-const FONT_NATIVE = 'bold 16px -apple-system, sans-serif';
-const FONT_SMALL  = '11px -apple-system, sans-serif';
+const LABEL_BG    = 'rgba(10,10,10,0.78)';
+const FONT_NATIVE = 'bold 18px -apple-system, sans-serif';
+const FONT_SMALL  = '12px -apple-system, sans-serif';
 
+// Size the canvas to the on-screen (CSS) size so text stays crisp.
 function resizeCanvas() {
-  canvas.width  = video.videoWidth  || canvas.offsetWidth;
-  canvas.height = video.videoHeight || canvas.offsetHeight;
+  const w = canvas.clientWidth  || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width  = w;
+    canvas.height = h;
+  }
+}
+
+// Compute the object-fit: cover mapping from frame space to screen space.
+function coverTransform() {
+  const vw = video.videoWidth  || 1280;
+  const vh = video.videoHeight || 720;
+  const sw = canvas.width;
+  const sh = canvas.height;
+  const scale = Math.max(sw / vw, sh / vh);   // cover = max
+  const dispW = vw * scale;
+  const dispH = vh * scale;
+  return {
+    scale,
+    offsetX: (sw - dispW) / 2,
+    offsetY: (sh - dispH) / 2,
+  };
 }
 
 function drawFrame(detections) {
   resizeCanvas();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const W = canvas.width;
-  const H = canvas.height;
+  const t = coverTransform();
 
   detections.forEach(det => {
     if (det.categories.length === 0) return;
@@ -357,38 +381,39 @@ function drawFrame(detections) {
     const roman  = tr ? tr[1] : '';
     const pct    = Math.round(score * 100);
 
+    // Raw pixel coords in frame space -> screen space via cover transform.
     const bb = det.boundingBox;
-    const x  = bb.originX * W;
-    const y  = bb.originY * H;
-    const w  = bb.width   * W;
-    const h  = bb.height  * H;
+    const x  = bb.originX * t.scale + t.offsetX;
+    const y  = bb.originY * t.scale + t.offsetY;
+    const w  = bb.width   * t.scale;
+    const h  = bb.height  * t.scale;
 
     // Bounding box
     ctx.strokeStyle = BOX_COLOR;
-    ctx.lineWidth   = 2.5;
+    ctx.lineWidth   = 3;
     ctx.strokeRect(x, y, w, h);
 
     // Corner accent (top-left)
     ctx.strokeStyle = '#fff';
     ctx.lineWidth   = 2;
-    const cs = 12;
+    const cs = 14;
     ctx.beginPath();
     ctx.moveTo(x, y + cs); ctx.lineTo(x, y); ctx.lineTo(x + cs, y);
     ctx.stroke();
 
-    // Label background
+    // Label background size
     ctx.font = FONT_NATIVE;
     const nativeW = ctx.measureText(native).width;
     ctx.font = FONT_SMALL;
     const romanW  = roman ? ctx.measureText(roman).width : 0;
-    const smallW  = ctx.measureText(label + ' ' + pct + '%').width;
-    const boxW    = Math.max(nativeW, romanW, smallW) + 16;
-    const boxH    = roman ? 50 : 38;
-    const lx      = Math.max(0, Math.min(x, W - boxW));
-    const ly      = y > boxH + 4 ? y - boxH - 4 : y + h + 4;
+    const smallW  = ctx.measureText(label + '  ' + pct + '%').width;
+    const boxW    = Math.max(nativeW, romanW, smallW) + 18;
+    const boxH    = roman ? 56 : 42;
+    const lx      = Math.max(2, Math.min(x, canvas.width - boxW - 2));
+    const ly      = y > boxH + 6 ? y - boxH - 6 : Math.min(y + h + 6, canvas.height - boxH - 2);
 
     ctx.fillStyle = LABEL_BG;
-    const r = 6;
+    const r = 8;
     ctx.beginPath();
     ctx.moveTo(lx + r, ly);
     ctx.lineTo(lx + boxW - r, ly);
@@ -403,22 +428,22 @@ function drawFrame(detections) {
     ctx.fill();
 
     // Native word
-    ctx.fillStyle  = '#fff';
-    ctx.font       = FONT_NATIVE;
+    ctx.fillStyle    = '#fff';
+    ctx.font         = FONT_NATIVE;
     ctx.textBaseline = 'top';
-    ctx.fillText(native, lx + 8, ly + 6);
+    ctx.fillText(native, lx + 9, ly + 7);
 
     // Romanization
     if (roman) {
       ctx.fillStyle = '#8ab4f8';
       ctx.font      = FONT_SMALL;
-      ctx.fillText(roman, lx + 8, ly + 26);
+      ctx.fillText(roman, lx + 9, ly + 30);
     }
 
     // English + confidence
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.font      = FONT_SMALL;
-    ctx.fillText(label + '  ' + pct + '%', lx + 8, roman ? ly + 38 : ly + 22);
+    ctx.fillText(label + '  ' + pct + '%', lx + 9, roman ? ly + 43 : ly + 25);
   });
 }
 
