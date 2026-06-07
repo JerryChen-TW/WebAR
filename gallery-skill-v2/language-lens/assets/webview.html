@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Language Lens AR</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #000;
+  overflow: hidden;
+  font-family: -apple-system, 'Helvetica Neue', sans-serif;
+  width: 100vw;
+  height: 100vh;
+}
+
+#wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+#video {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+
+/* All AR overlays are drawn here */
+#overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+
+/* Header bar */
+#header {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 10;
+  padding: 10px 12px 8px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, transparent 100%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#lang-chip {
+  background: #1a73e8;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  letter-spacing: 0.3px;
+}
+
+#status-text {
+  color: rgba(255,255,255,0.8);
+  font-size: 12px;
+}
+
+/* Loading screen */
+#loading {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.88);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 20;
+}
+
+.ring {
+  width: 44px; height: 44px;
+  border: 3px solid rgba(255,255,255,0.15);
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#load-msg {
+  color: rgba(255,255,255,0.75);
+  font-size: 14px;
+}
+
+/* Error screen */
+#err {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.9);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  gap: 12px;
+  z-index: 20;
+}
+#err-msg {
+  color: #f28b82;
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.5;
+}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+
+  <div id="header">
+    <span id="lang-chip">Loading…</span>
+    <span id="status-text">Starting…</span>
+  </div>
+
+  <div id="loading">
+    <div class="ring"></div>
+    <div id="load-msg">Loading vision model…</div>
+  </div>
+
+  <div id="err">
+    <div id="err-msg"></div>
+  </div>
+</div>
+
+<script type="module">
+// ─── Read URL params ───────────────────────────────────────────────────────
+const sp = new URLSearchParams(location.search);
+const LANG = sp.get('lang') || 'ja';
+const LANG_NAME = sp.get('langName') || 'Japanese';
+
+document.getElementById('lang-chip').textContent = LANG_NAME;
+
+// ─── Translation dictionary ────────────────────────────────────────────────
+// [native word, romanization ('' if Latin), english label]
+const DICT = {
+  ja: {
+    person:['人','hito'], bicycle:['自転車','jitensha'], car:['車','kuruma'],
+    motorcycle:['バイク','baiku'], airplane:['飛行機','hikōki'], bus:['バス','basu'],
+    train:['電車','densha'], truck:['トラック','torakku'], boat:['ボート','bōto'],
+    bird:['鳥','tori'], cat:['猫','neko'], dog:['犬','inu'], horse:['馬','uma'],
+    cow:['牛','ushi'], sheep:['羊','hitsuji'], elephant:['象','zō'], bear:['熊','kuma'],
+    zebra:['シマウマ','shimauma'], giraffe:['キリン','kirin'],
+    backpack:['リュック','ryukku'], umbrella:['傘','kasa'],
+    handbag:['ハンドバッグ','handobaggu'], suitcase:['スーツケース','sūtsukēsu'],
+    bottle:['瓶','bin'], 'wine glass':['ワイングラス','waingurasu'],
+    cup:['コップ','koppu'], fork:['フォーク','fōku'], knife:['ナイフ','naifu'],
+    spoon:['スプーン','supūn'], bowl:['お椀','owan'], banana:['バナナ','banana'],
+    apple:['りんご','ringo'], sandwich:['サンドイッチ','sandoicchi'],
+    orange:['オレンジ','orenji'], broccoli:['ブロッコリー','burokkorī'],
+    carrot:['にんじん','ninjin'], 'hot dog':['ホットドッグ','hottodoggu'],
+    pizza:['ピザ','piza'], donut:['ドーナツ','dōnatsu'], cake:['ケーキ','kēki'],
+    chair:['椅子','isu'], couch:['ソファ','sofa'], bed:['ベッド','beddo'],
+    toilet:['トイレ','toire'], tv:['テレビ','terebi'], laptop:['ノートPC','nōto PC'],
+    mouse:['マウス','mausu'], remote:['リモコン','rimokon'],
+    keyboard:['キーボード','kībōdo'], 'cell phone':['スマホ','sumaho'],
+    microwave:['電子レンジ','denshi renji'], oven:['オーブン','ōbun'],
+    sink:['シンク','shinku'], refrigerator:['冷蔵庫','reizōko'],
+    book:['本','hon'], clock:['時計','tokei'], vase:['花瓶','kabin'],
+    scissors:['ハサミ','hasami'], toothbrush:['歯ブラシ','haburashi'],
+    'potted plant':['植木','ueki'], 'dining table':['食卓','shokutaku'],
+    'sports ball':['ボール','bōru'], kite:['凧','tako'],
+    'traffic light':['信号機','shingōki'], bench:['ベンチ','benchi'],
+    'fire hydrant':['消火栓','shōkasen'], 'stop sign':['一時停止','ichiji teishi'],
+    tie:['ネクタイ','nekutai'], 'teddy bear':['テディベア','tediibea'],
+    'hair drier':['ドライヤー','doraiyā'], skateboard:['スケボー','sukebō'],
+    surfboard:['サーフボード','sāfubōdo'], 'tennis racket':['ラケット','raketto'],
+  },
+  ko: {
+    person:['사람','saram'], bicycle:['자전거','jajeon-geo'], car:['자동차','jadongcha'],
+    motorcycle:['오토바이','otobai'], airplane:['비행기','bihaenggi'],
+    bus:['버스','beoseu'], train:['기차','gicha'], truck:['트럭','teureok'],
+    boat:['배','bae'], bird:['새','sae'], cat:['고양이','goyang-i'], dog:['개','gae'],
+    horse:['말','mal'], cow:['소','so'], backpack:['배낭','baenang'],
+    umbrella:['우산','usan'], bottle:['병','byeong'], cup:['컵','keop'],
+    fork:['포크','pokeu'], knife:['칼','kal'], spoon:['숟가락','sutgarak'],
+    bowl:['그릇','geureut'], banana:['바나나','banana'], apple:['사과','sagwa'],
+    orange:['오렌지','orenji'], pizza:['피자','pija'], cake:['케이크','keikeu'],
+    chair:['의자','uija'], book:['책','chaek'], clock:['시계','sigye'],
+    'cell phone':['핸드폰','haendeupon'], laptop:['노트북','noteubuk'],
+    tv:['텔레비전','tellebijeon'], bed:['침대','chimdae'],
+    toilet:['화장실','hwajangsil'], refrigerator:['냉장고','naengjanggo'],
+    toothbrush:['칫솔','chissol'], 'potted plant':['화분','hwabun'],
+    'dining table':['식탁','siktak'], bench:['벤치','benchi'],
+  },
+  zh: {
+    person:['人','rén'], bicycle:['自行車','zìxíngchē'], car:['汽車','qìchē'],
+    motorcycle:['摩托車','mótuōchē'], airplane:['飛機','fēijī'],
+    bus:['公車','gōngchē'], train:['火車','huǒchē'], cat:['貓','māo'],
+    dog:['狗','gǒu'], bird:['鳥','niǎo'], bottle:['瓶子','píngzi'],
+    cup:['杯子','bēizi'], apple:['蘋果','píngguǒ'], banana:['香蕉','xiāngjiāo'],
+    orange:['橙子','chéngzi'], book:['書','shū'], clock:['時鐘','shízhōng'],
+    chair:['椅子','yǐzi'], bed:['床','chuáng'], laptop:['筆電','bǐdiàn'],
+    'cell phone':['手機','shǒujī'], tv:['電視','diànshì'],
+    pizza:['披薩','pīsà'], cake:['蛋糕','dàngāo'], toilet:['馬桶','mǎtǒng'],
+    umbrella:['雨傘','yǔsǎn'], backpack:['背包','bèibāo'],
+    refrigerator:['冰箱','bīngxiāng'], 'potted plant':['盆栽','pénzāi'],
+  },
+  es: {
+    person:['persona',''], bicycle:['bicicleta',''], car:['coche',''],
+    motorcycle:['moto',''], airplane:['avión',''], bus:['autobús',''],
+    train:['tren',''], cat:['gato',''], dog:['perro',''], bird:['pájaro',''],
+    bottle:['botella',''], cup:['taza',''], apple:['manzana',''],
+    banana:['plátano',''], orange:['naranja',''], book:['libro',''],
+    clock:['reloj',''], chair:['silla',''], bed:['cama',''],
+    laptop:['portátil',''], 'cell phone':['teléfono',''], tv:['televisión',''],
+    pizza:['pizza',''], cake:['pastel',''], umbrella:['paraguas',''],
+    backpack:['mochila',''], refrigerator:['nevera',''], toilet:['inodoro',''],
+  },
+  fr: {
+    person:['personne',''], bicycle:['vélo',''], car:['voiture',''],
+    motorcycle:['moto',''], airplane:['avion',''], bus:['bus',''],
+    train:['train',''], cat:['chat',''], dog:['chien',''], bird:['oiseau',''],
+    bottle:['bouteille',''], cup:['tasse',''], apple:['pomme',''],
+    banana:['banane',''], orange:['orange',''], book:['livre',''],
+    clock:['horloge',''], chair:['chaise',''], bed:['lit',''],
+    laptop:['ordinateur',''], 'cell phone':['téléphone',''], tv:['télévision',''],
+    pizza:['pizza',''], cake:['gâteau',''], umbrella:['parapluie',''],
+    backpack:['sac à dos',''], refrigerator:['réfrigérateur',''],
+  },
+  de: {
+    person:['Person',''], bicycle:['Fahrrad',''], car:['Auto',''],
+    motorcycle:['Motorrad',''], airplane:['Flugzeug',''], bus:['Bus',''],
+    train:['Zug',''], cat:['Katze',''], dog:['Hund',''], bird:['Vogel',''],
+    bottle:['Flasche',''], cup:['Tasse',''], apple:['Apfel',''],
+    banana:['Banane',''], book:['Buch',''], clock:['Uhr',''],
+    chair:['Stuhl',''], bed:['Bett',''], laptop:['Laptop',''],
+    'cell phone':['Handy',''], tv:['Fernseher',''], pizza:['Pizza',''],
+    cake:['Kuchen',''], umbrella:['Regenschirm',''], backpack:['Rucksack',''],
+    refrigerator:['Kühlschrank',''],
+  },
+  th: {
+    person:['คน','kon'], bicycle:['จักรยาน','jak-ra-yaan'], car:['รถ','rot'],
+    cat:['แมว','maew'], dog:['หมา','maa'], bird:['นก','nok'],
+    apple:['แอปเปิ้ล','aep-poen'], banana:['กล้วย','gluay'],
+    bottle:['ขวด','khuat'], cup:['ถ้วย','thuay'], book:['หนังสือ','nang-sue'],
+    chair:['เก้าอี้','kao-i'], 'cell phone':['โทรศัพท์','thorasap'],
+    laptop:['แล็ปท็อป','laep-thop'], tv:['โทรทัศน์','thorathat'],
+  },
+  vi: {
+    person:['người','nguoi'], bicycle:['xe đạp','xe dap'], car:['xe hơi','xe hoi'],
+    cat:['mèo','meo'], dog:['chó','cho'], bird:['chim','chim'],
+    apple:['táo','tao'], banana:['chuối','chuoi'], bottle:['chai','chai'],
+    cup:['cốc','coc'], book:['sách','sach'], chair:['ghế','ghe'],
+    'cell phone':['điện thoại','dien thoai'], laptop:['máy tính','may tinh'],
+    tv:['tivi','tivi'], bed:['giường','giuong'],
+  },
+  en: {
+    person:['person',''], bicycle:['bicycle',''], car:['car',''],
+    motorcycle:['motorcycle',''], airplane:['airplane',''], bus:['bus',''],
+    cat:['cat',''], dog:['dog',''], bird:['bird',''], bottle:['bottle',''],
+    cup:['cup',''], apple:['apple',''], book:['book',''], chair:['chair',''],
+    'cell phone':['cell phone',''], laptop:['laptop',''],
+  },
+};
+
+function translate(label) {
+  const tbl = DICT[LANG] || DICT['ja'];
+  return tbl[label.toLowerCase()] || null;
+}
+
+// ─── DOM ──────────────────────────────────────────────────────────────────
+const video    = document.getElementById('video');
+const canvas   = document.getElementById('overlay');
+const ctx      = canvas.getContext('2d');
+const loading  = document.getElementById('loading');
+const loadMsg  = document.getElementById('load-msg');
+const statusEl = document.getElementById('status-text');
+const errDiv   = document.getElementById('err');
+const errMsg   = document.getElementById('err-msg');
+
+function showError(msg) {
+  loading.style.display = 'none';
+  errDiv.style.display = 'flex';
+  errMsg.textContent = msg;
+}
+
+// ─── MediaPipe (same bundle the official text-spinner skill uses) ──────────
+import {
+  ObjectDetector,
+  FilesetResolver
+} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs';
+
+let detector = null;
+let lastTime = -1;
+
+async function initDetector() {
+  loadMsg.textContent = 'Loading object detection model…';
+  const vision = await FilesetResolver.forVisionTasks(
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
+  );
+  detector = await ObjectDetector.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath:
+        'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite',
+      delegate: 'CPU',
+    },
+    scoreThreshold: 0.42,
+    runningMode: 'VIDEO',
+    maxResults: 5,
+  });
+}
+
+// ─── Camera ───────────────────────────────────────────────────────────────
+async function startCamera() {
+  loadMsg.textContent = 'Starting camera…';
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: 'environment',
+      width:  { ideal: 1280 },
+      height: { ideal: 720 },
+    },
+    audio: false,
+  });
+  video.srcObject = stream;
+  await new Promise(resolve => {
+    video.addEventListener('loadeddata', resolve, { once: true });
+  });
+}
+
+// ─── Drawing ──────────────────────────────────────────────────────────────
+// IMPORTANT: MediaPipe ObjectDetector returns boundingBox in PIXEL coordinates
+// of the input video frame (videoWidth x videoHeight), NOT normalized 0-1.
+// The <video> is shown with object-fit: cover, so we replicate that same
+// cover transform to map frame-pixels -> screen-pixels and keep boxes aligned.
+const BOX_COLOR   = '#1a73e8';
+const LABEL_BG    = 'rgba(10,10,10,0.78)';
+const FONT_NATIVE = 'bold 18px -apple-system, sans-serif';
+const FONT_SMALL  = '12px -apple-system, sans-serif';
+
+// Size the canvas to the on-screen (CSS) size so text stays crisp.
+function resizeCanvas() {
+  const w = canvas.clientWidth  || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width  = w;
+    canvas.height = h;
+  }
+}
+
+// Compute the object-fit: cover mapping from frame space to screen space.
+function coverTransform() {
+  const vw = video.videoWidth  || 1280;
+  const vh = video.videoHeight || 720;
+  const sw = canvas.width;
+  const sh = canvas.height;
+  const scale = Math.max(sw / vw, sh / vh);   // cover = max
+  const dispW = vw * scale;
+  const dispH = vh * scale;
+  return {
+    scale,
+    offsetX: (sw - dispW) / 2,
+    offsetY: (sh - dispH) / 2,
+  };
+}
+
+function drawFrame(detections) {
+  resizeCanvas();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const t = coverTransform();
+
+  detections.forEach(det => {
+    if (det.categories.length === 0) return;
+    const cat   = det.categories[0];
+    const score = cat.score;
+    if (score < 0.42) return;
+
+    const label  = cat.categoryName;
+    const tr     = translate(label);
+    const native = tr ? tr[0] : label;
+    const roman  = tr ? tr[1] : '';
+    const pct    = Math.round(score * 100);
+
+    // Raw pixel coords in frame space -> screen space via cover transform.
+    const bb = det.boundingBox;
+    const x  = bb.originX * t.scale + t.offsetX;
+    const y  = bb.originY * t.scale + t.offsetY;
+    const w  = bb.width   * t.scale;
+    const h  = bb.height  * t.scale;
+
+    // Bounding box
+    ctx.strokeStyle = BOX_COLOR;
+    ctx.lineWidth   = 3;
+    ctx.strokeRect(x, y, w, h);
+
+    // Corner accent (top-left)
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth   = 2;
+    const cs = 14;
+    ctx.beginPath();
+    ctx.moveTo(x, y + cs); ctx.lineTo(x, y); ctx.lineTo(x + cs, y);
+    ctx.stroke();
+
+    // Label background size
+    ctx.font = FONT_NATIVE;
+    const nativeW = ctx.measureText(native).width;
+    ctx.font = FONT_SMALL;
+    const romanW  = roman ? ctx.measureText(roman).width : 0;
+    const smallW  = ctx.measureText(label + '  ' + pct + '%').width;
+    const boxW    = Math.max(nativeW, romanW, smallW) + 18;
+    const boxH    = roman ? 56 : 42;
+    const lx      = Math.max(2, Math.min(x, canvas.width - boxW - 2));
+    const ly      = y > boxH + 6 ? y - boxH - 6 : Math.min(y + h + 6, canvas.height - boxH - 2);
+
+    ctx.fillStyle = LABEL_BG;
+    const r = 8;
+    ctx.beginPath();
+    ctx.moveTo(lx + r, ly);
+    ctx.lineTo(lx + boxW - r, ly);
+    ctx.quadraticCurveTo(lx + boxW, ly, lx + boxW, ly + r);
+    ctx.lineTo(lx + boxW, ly + boxH - r);
+    ctx.quadraticCurveTo(lx + boxW, ly + boxH, lx + boxW - r, ly + boxH);
+    ctx.lineTo(lx + r, ly + boxH);
+    ctx.quadraticCurveTo(lx, ly + boxH, lx, ly + boxH - r);
+    ctx.lineTo(lx, ly + r);
+    ctx.quadraticCurveTo(lx, ly, lx + r, ly);
+    ctx.closePath();
+    ctx.fill();
+
+    // Native word
+    ctx.fillStyle    = '#fff';
+    ctx.font         = FONT_NATIVE;
+    ctx.textBaseline = 'top';
+    ctx.fillText(native, lx + 9, ly + 7);
+
+    // Romanization
+    if (roman) {
+      ctx.fillStyle = '#8ab4f8';
+      ctx.font      = FONT_SMALL;
+      ctx.fillText(roman, lx + 9, ly + 30);
+    }
+
+    // English + confidence
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font      = FONT_SMALL;
+    ctx.fillText(label + '  ' + pct + '%', lx + 9, roman ? ly + 43 : ly + 25);
+  });
+}
+
+// ─── Detection loop ───────────────────────────────────────────────────────
+function loop() {
+  if (video.currentTime !== lastTime && video.readyState >= 2) {
+    lastTime = video.currentTime;
+    try {
+      const result = detector.detectForVideo(video, performance.now());
+      const active = result.detections.filter(d =>
+        d.categories.length > 0 && d.categories[0].score >= 0.42
+      );
+      drawFrame(active);
+      const n = active.length;
+      statusEl.textContent = n > 0
+        ? n + ' object' + (n > 1 ? 's' : '') + ' detected'
+        : 'Scanning…';
+    } catch (_) { /* skip bad frame */ }
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    await initDetector();
+    await startCamera();
+    loading.style.display = 'none';
+    statusEl.textContent = 'Scanning…';
+    loop();
+  } catch (e) {
+    showError('⚠️ ' + e.message + '\n\nMake sure camera permission is allowed.');
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>
