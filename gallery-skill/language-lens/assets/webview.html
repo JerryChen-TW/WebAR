@@ -302,7 +302,7 @@ async function initDetector() {
     baseOptions: {
       modelAssetPath:
         'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite',
-      delegate: 'GPU',
+      delegate: 'CPU',
     },
     scoreThreshold: 0.42,
     runningMode: 'VIDEO',
