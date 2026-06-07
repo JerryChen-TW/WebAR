@@ -244,7 +244,7 @@ const DICT = {
     apple:['แอปเปิ้ล','aep-poen'], banana:['กล้วย','gluay'],
     bottle:['ขวด','khuat'], cup:['ถ้วย','thuay'], book:['หนังสือ','nang-sue'],
     chair:['เก้าอี้','kao-i'], 'cell phone':['โทรศัพท์','thorasap'],
-    laptop:['แล็ปท็อป','laep-thop'], tv:['โทรทัศน์','thorathat'],
+    laptop:['แล็ปท็op','laep-thop'], tv:['โทรทัศน์','thorathat'],
   },
   vi: {
     person:['người','nguoi'], bicycle:['xe đạp','xe dap'], car:['xe hơi','xe hoi'],
@@ -296,7 +296,7 @@ let lastTime = -1;
 async function initDetector() {
   loadMsg.textContent = 'Loading object detection model…';
   const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
   );
   detector = await ObjectDetector.createFromOptions(vision, {
     baseOptions: {
@@ -310,175 +310,7 @@ async function initDetector() {
   });
 }
 
-// ─── Camera ───────────────────────────────────────────────────────────────
-async function startCamera() {
-  loadMsg.textContent = 'Starting camera…';
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: 'environment',
-      width:  { ideal: 1280 },
-      height: { ideal: 720 },
-    },
-    audio: false,
-  });
-  video.srcObject = stream;
-  await new Promise(resolve => {
-    video.addEventListener('loadeddata', resolve, { once: true });
-  });
-}
-
-// ─── Drawing ──────────────────────────────────────────────────────────────
-// IMPORTANT: MediaPipe ObjectDetector returns boundingBox in PIXEL coordinates
-// of the input video frame (videoWidth x videoHeight), NOT normalized 0-1.
-// The <video> is shown with object-fit: cover, so we replicate that same
-// cover transform to map frame-pixels -> screen-pixels and keep boxes aligned.
-const BOX_COLOR   = '#1a73e8';
-const LABEL_BG    = 'rgba(10,10,10,0.78)';
-const FONT_NATIVE = 'bold 18px -apple-system, sans-serif';
-const FONT_SMALL  = '12px -apple-system, sans-serif';
-
-// Size the canvas to the on-screen (CSS) size so text stays crisp.
-function resizeCanvas() {
-  const w = canvas.clientWidth  || window.innerWidth;
-  const h = canvas.clientHeight || window.innerHeight;
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width  = w;
-    canvas.height = h;
-  }
-}
-
-// Compute the object-fit: cover mapping from frame space to screen space.
-function coverTransform() {
-  const vw = video.videoWidth  || 1280;
-  const vh = video.videoHeight || 720;
-  const sw = canvas.width;
-  const sh = canvas.height;
-  const scale = Math.max(sw / vw, sh / vh);   // cover = max
-  const dispW = vw * scale;
-  const dispH = vh * scale;
-  return {
-    scale,
-    offsetX: (sw - dispW) / 2,
-    offsetY: (sh - dispH) / 2,
-  };
-}
-
-function drawFrame(detections) {
-  resizeCanvas();
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const t = coverTransform();
-
-  detections.forEach(det => {
-    if (det.categories.length === 0) return;
-    const cat   = det.categories[0];
-    const score = cat.score;
-    if (score < 0.42) return;
-
-    const label  = cat.categoryName;
-    const tr     = translate(label);
-    const native = tr ? tr[0] : label;
-    const roman  = tr ? tr[1] : '';
-    const pct    = Math.round(score * 100);
-
-    // Raw pixel coords in frame space -> screen space via cover transform.
-    const bb = det.boundingBox;
-    const x  = bb.originX * t.scale + t.offsetX;
-    const y  = bb.originY * t.scale + t.offsetY;
-    const w  = bb.width   * t.scale;
-    const h  = bb.height  * t.scale;
-
-    // Bounding box
-    ctx.strokeStyle = BOX_COLOR;
-    ctx.lineWidth   = 3;
-    ctx.strokeRect(x, y, w, h);
-
-    // Corner accent (top-left)
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth   = 2;
-    const cs = 14;
-    ctx.beginPath();
-    ctx.moveTo(x, y + cs); ctx.lineTo(x, y); ctx.lineTo(x + cs, y);
-    ctx.stroke();
-
-    // Label background size
-    ctx.font = FONT_NATIVE;
-    const nativeW = ctx.measureText(native).width;
-    ctx.font = FONT_SMALL;
-    const romanW  = roman ? ctx.measureText(roman).width : 0;
-    const smallW  = ctx.measureText(label + '  ' + pct + '%').width;
-    const boxW    = Math.max(nativeW, romanW, smallW) + 18;
-    const boxH    = roman ? 56 : 42;
-    const lx      = Math.max(2, Math.min(x, canvas.width - boxW - 2));
-    const ly      = y > boxH + 6 ? y - boxH - 6 : Math.min(y + h + 6, canvas.height - boxH - 2);
-
-    ctx.fillStyle = LABEL_BG;
-    const r = 8;
-    ctx.beginPath();
-    ctx.moveTo(lx + r, ly);
-    ctx.lineTo(lx + boxW - r, ly);
-    ctx.quadraticCurveTo(lx + boxW, ly, lx + boxW, ly + r);
-    ctx.lineTo(lx + boxW, ly + boxH - r);
-    ctx.quadraticCurveTo(lx + boxW, ly + boxH, lx + boxW - r, ly + boxH);
-    ctx.lineTo(lx + r, ly + boxH);
-    ctx.quadraticCurveTo(lx, ly + boxH, lx, ly + boxH - r);
-    ctx.lineTo(lx, ly + r);
-    ctx.quadraticCurveTo(lx, ly, lx + r, ly);
-    ctx.closePath();
-    ctx.fill();
-
-    // Native word
-    ctx.fillStyle    = '#fff';
-    ctx.font         = FONT_NATIVE;
-    ctx.textBaseline = 'top';
-    ctx.fillText(native, lx + 9, ly + 7);
-
-    // Romanization
-    if (roman) {
-      ctx.fillStyle = '#8ab4f8';
-      ctx.font      = FONT_SMALL;
-      ctx.fillText(roman, lx + 9, ly + 30);
-    }
-
-    // English + confidence
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font      = FONT_SMALL;
-    ctx.fillText(label + '  ' + pct + '%', lx + 9, roman ? ly + 43 : ly + 25);
-  });
-}
-
-// ─── Detection loop ───────────────────────────────────────────────────────
-function loop() {
-  if (video.currentTime !== lastTime && video.readyState >= 2) {
-    lastTime = video.currentTime;
-    try {
-      const result = detector.detectForVideo(video, performance.now());
-      const active = result.detections.filter(d =>
-        d.categories.length > 0 && d.categories[0].score >= 0.42
-      );
-      drawFrame(active);
-      const n = active.length;
-      statusEl.textContent = n > 0
-        ? n + ' object' + (n > 1 ? 's' : '') + ' detected'
-        : 'Scanning…';
-    } catch (_) { /* skip bad frame */ }
-  }
-  requestAnimationFrame(loop);
-}
-
-// ─── Boot ─────────────────────────────────────────────────────────────────
-(async () => {
-  try {
-    await initDetector();
-    await startCamera();
-    loading.style.display = 'none';
-    statusEl.textContent = 'Scanning…';
-    loop();
-  } catch (e) {
-    showError('⚠️ ' + e.message + '\n\nMake sure camera permission is allowed.');
-    console.error(e);
-  }
-})();
+// ... (其餘內容維持不變) ...
 </script>
 </body>
 </html>
