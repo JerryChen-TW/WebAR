@@ -5,7 +5,7 @@ description: Open a live AR camera that detects real-world objects and labels th
 
 # Instructions
 
-You MUST use the `run_js` tool with the following exact parameters:
+Please use the run_js tool with the following exact parameters:
 
 - script name: `index.html`
 - data: A JSON string with the following fields:
@@ -13,3 +13,5 @@ You MUST use the `run_js` tool with the following exact parameters:
   - languageName: the full English name of that language (e.g. `Japanese`).
 
 If the user has not told you which language they want to learn, ask them first, then call the tool.
+
+---
