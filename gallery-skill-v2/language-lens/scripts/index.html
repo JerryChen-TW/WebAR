@@ -1,57 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Language Lens Skill</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Language Lens</title>
   </head>
   <body>
     <script>
-      /**
-       * AI Edge Gallery JS skill entry point.
-       *
-       * FIXES (2026-06-08 zero-trust audit):
-       *   1. Removed aspectRatio field — not present in any official built-in
-       *      skill (text-spinner, interactive-map). Unknown fields risk parse
-       *      failure on iOS Gallery.
-       *      Ref: google-ai-edge/gallery skills/built-in/text-spinner/scripts/index.html
-       *        → returns only { webview: { url } }
-       *
-       *   2. url returns plain filename only (no assets/ prefix).
-       *      iOS App internally prepends /assets/ when resolving webview path.
-       */
-      window['ai_edge_gallery_get_result'] = async (dataStr, _secret) => {
-        try {
-          console.log('[language-lens] skill invoked, raw data:', dataStr);
-
-          let lang     = 'en';
-          let langName = 'English';
-
-          if (dataStr) {
-            const obj = JSON.parse(typeof dataStr === 'string' ? dataStr : String(dataStr));
-            if (obj && obj.language)     lang     = String(obj.language);
-            if (obj && obj.languageName) langName = String(obj.languageName);
+      window['ai_edge_gallery_get_result'] = async (data) => {
+        const jsonObj = JSON.parse(data);
+        const lang = jsonObj.language || 'en';
+        const langName = jsonObj.languageName || 'English';
+        return JSON.stringify({
+          webview: {
+            url: `webview.html?lang=${encodeURIComponent(lang)}&langName=${encodeURIComponent(langName)}`
           }
-
-          console.log('[language-lens] parsed: lang=' + lang + ' langName=' + langName);
-
-          const url =
-            'webview.html' +
-            '?lang='     + encodeURIComponent(lang) +
-            '&langName=' + encodeURIComponent(langName);
-
-          console.log('[language-lens] returning webview url:', url);
-
-          // Only { webview: { url } } — matches official text-spinner pattern exactly.
-          // No aspectRatio, no result field added here intentionally.
-          return JSON.stringify({
-            webview: { url },
-          });
-        } catch (e) {
-          const msg = e && e.message ? e.message : String(e);
-          console.error('[language-lens] error:', e);
-          return JSON.stringify({ error: 'language-lens skill error: ' + msg });
-        }
+        });
       };
     </script>
   </body>
