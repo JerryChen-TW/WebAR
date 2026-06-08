@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>AR 物件偵測</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="container">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="topbar">
+      <span id="app-title">AR 物件偵測</span>
+      <div id="lang-selector">
+        <button id="lang-btn"><span class="lang-label">English</span></button>
+        <div id="lang-menu"></div>
+      </div>
+    </div>
+
+    <div id="count-badge"></div>
+
+    <div id="status" class="hidden"></div>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <div id="loading-text">啟動相機中…</div>
+    </div>
+
+    <div id="cam-error">
+      <h2>⚠️ 無法存取相機</h2>
+      <p>請確認已授予相機權限，然後重試。</p>
+      <button id="retry-btn">重試</button>
+    </div>
+  </div>
+
+  <script src="labels.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
