@@ -1,39 +1,36 @@
 // Language Lens JS skill entry point for Google AI Edge Gallery.
-// This file is pure JavaScript (no HTML wrapper) to match the official
-// JS skill contract described in the Gallery README.
+// Pure JavaScript (no HTML wrapper), following the official JS skill examples
+// like virtual-piano and restaurant-roulette.
 //
 // Contract:
-//   window['ai_edge_gallery_get_result'](data: string) => Promise<string>
-// where `data` is a JSON string and the return value is also a JSON string.
-//
-// This skill returns a WebView URL for the AR UI plus a short `result`
-// message for the chat transcript.
+//   window['ai_edge_gallery_get_result'](dataStr: string, secret?: string) => Promise<string>
+// - dataStr: JSON string sent from the LLM (we only care about language fields)
+// - return: JSON string with either { webview, result } or { error }
 
-window['ai_edge_gallery_get_result'] = async (data) => {
-  let lang = 'en';
-  let langName = 'English';
-
+window['ai_edge_gallery_get_result'] = async (dataStr, _secret) => {
   try {
-    const obj = JSON.parse(data ?? '{}');
-    if (obj && obj.language) lang = String(obj.language);
-    if (obj && obj.languageName) langName = String(obj.languageName);
-  } catch (e) {
-    // Keep defaults if parsing fails.
-  }
+    let lang = 'en';
+    let langName = 'English';
 
-  // Tell Gallery to open the embedded webview for this skill.
-  // NOTE: webview.html lives under assets/ in the skill bundle,
-  // so we point to assets/webview.html here (same pattern as
-  // the official virtual-piano example which returns a local UI file).
-  return JSON.stringify({
-    result: 'Starting Language Lens AR view.',
-    webview: {
-      url:
-        'assets/webview.html?lang=' +
-        encodeURIComponent(lang) +
-        '&langName=' +
-        encodeURIComponent(langName),
-      aspectRatio: 1.0,
-    },
-  });
+    if (dataStr) {
+      const obj = JSON.parse(typeof dataStr === 'string' ? dataStr : String(dataStr));
+      if (obj && obj.language) lang = String(obj.language);
+      if (obj && obj.languageName) langName = String(obj.languageName);
+    }
+
+    const url =
+      'webview.html?lang=' +
+      encodeURIComponent(lang) +
+      '&langName=' +
+      encodeURIComponent(langName);
+
+    return JSON.stringify({
+      webview: { url },
+      result: 'Starting Language Lens AR view for ' + langName + ' (' + lang + ').',
+    });
+  } catch (e) {
+    // Never throw back to the host app; always return a structured error.
+    const msg = (e && e.message) ? e.message : String(e);
+    return JSON.stringify({ error: 'language-lens skill error: ' + msg });
+  }
 };
