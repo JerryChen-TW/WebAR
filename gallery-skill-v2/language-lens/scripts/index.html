@@ -2,45 +2,57 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Language Lens Skill</title>
   </head>
   <body>
     <script>
-      // JS entry point for the Language Lens skill.
-      // Runs in a hidden webview as described in the AI Edge Gallery skills README.
-      // It parses the language settings and asks the host app to open webview.html
-      // with appropriate query parameters.
+      /**
+       * AI Edge Gallery JS skill entry point.
+       * Called by the Gallery Android runtime with a stringified JSON payload.
+       * Must return a stringified JSON object.
+       *
+       * Official structure reference:
+       *   skills/built-in/text-spinner/scripts/index.html (google-ai-edge/gallery)
+       *   → webview.html lives in assets/, script returns url: "assets/webview.html?..."
+       *
+       * Key fix: webview.html MUST be inside assets/ and the url MUST include the
+       * assets/ prefix so the Gallery host can resolve the local file correctly.
+       */
       window['ai_edge_gallery_get_result'] = async (dataStr, _secret) => {
         try {
-          console.log('[language-lens] JS skill invoked with data:', dataStr);
-          let lang = 'en';
+          console.log('[language-lens] skill invoked, raw data:', dataStr);
+
+          let lang     = 'en';
           let langName = 'English';
 
           if (dataStr) {
             const obj = JSON.parse(typeof dataStr === 'string' ? dataStr : String(dataStr));
-            console.log('[language-lens] Parsed data object:', obj);
-            if (obj && obj.language) lang = String(obj.language);
+            if (obj && obj.language)     lang     = String(obj.language);
             if (obj && obj.languageName) langName = String(obj.languageName);
           }
 
-          const url =
-            'webview.html?lang=' +
-            encodeURIComponent(lang) +
-            '&langName=' +
-            encodeURIComponent(langName);
+          console.log('[language-lens] parsed: lang=' + lang + ' langName=' + langName);
 
-          console.log('[language-lens] Returning webview URL:', url);
+          // Cache-bust with timestamp so the webview always reloads fresh,
+          // matching the pattern used by virtual-piano (google-ai-edge/gallery).
+          const url =
+            'assets/webview.html' +
+            '?lang='     + encodeURIComponent(lang) +
+            '&langName=' + encodeURIComponent(langName) +
+            '&v='        + Date.now();
+
+          console.log('[language-lens] returning webview url:', url);
 
           return JSON.stringify({
-            result: 'Starting Language Lens AR view for ' + langName + ' (' + lang + ').',
             webview: {
               url,
-              aspectRatio: 1.0,
+              aspectRatio: 0.75,
             },
           });
         } catch (e) {
           const msg = e && e.message ? e.message : String(e);
-          console.error('[language-lens] JS skill error:', e);
+          console.error('[language-lens] error:', e);
           return JSON.stringify({ error: 'language-lens skill error: ' + msg });
         }
       };
