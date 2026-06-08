@@ -1,231 +1,339 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Language Lens AR</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-  background: #000;
-  overflow: hidden;
-  font-family: -apple-system, 'Helvetica Neue', sans-serif;
-  width: 100vw;
-  height: 100vh;
-}
-
-#wrap {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-#video {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  object-fit: cover;
-}
-
-/* All AR overlays are drawn here */
-#overlay {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-}
-
-/* Header bar */
-#header {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  z-index: 10;
-  padding: 10px 12px 8px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, transparent 100%);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-#lang-chip {
-  background: #1a73e8;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 12px;
-  letter-spacing: 0.3px;
-}
-
-#status-text {
-  color: rgba(255,255,255,0.8);
-  font-size: 12px;
-}
-
-/* Loading screen */
-#loading {
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.88);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  z-index: 20;
-}
-
-.ring {
-  width: 44px; height: 44px;
-  border: 3px solid rgba(255,255,255,0.15);
-  border-top-color: #1a73e8;
-  border-radius: 50%;
-  animation: spin 0.75s linear infinite;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
-
-#load-msg {
-  color: rgba(255,255,255,0.75);
-  font-size: 14px;
-}
-
-/* Error screen */
-#err {
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.9);
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  gap: 12px;
-  z-index: 20;
-}
-#err-msg {
-  color: #f28b82;
-  font-size: 13px;
-  text-align: center;
-  line-height: 1.5;
-}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Language Lens AR</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      width: 100vw;
+      height: 100vh;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+    #video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* mirror like front camera */
+    }
+    #overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    #header {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 10;
+      padding: 10px 12px 8px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #lang-chip {
+      background: #1a73e8;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      letter-spacing: 0.3px;
+    }
+    #status-text {
+      color: rgba(255,255,255,0.85);
+      font-size: 12px;
+    }
+    #loading {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      background: rgba(0,0,0,0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+    .ring {
+      width: 44px; height: 44px;
+      border: 3px solid rgba(255,255,255,0.18);
+      border-top-color: #1a73e8;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #load-msg {
+      color: rgba(255,255,255,0.75);
+      font-size: 14px;
+      text-align: center;
+    }
+    #err {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      gap: 12px;
+      z-index: 30;
+    }
+    #err-msg {
+      color: #f28b82;
+      font-size: 13px;
+      text-align: center;
+      line-height: 1.5;
+    }
+  </style>
+  <!-- MediaPipe Tasks Vision bundle via CDN, as recommended in object detector web guide -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js" crossorigin="anonymous"></script>
 </head>
 <body>
-<div id="wrap">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="overlay"></canvas>
+  <div id="wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
 
-  <div id="header">
-    <span id="lang-chip">Loading…</span>
-    <span id="status-text">Starting…</span>
+    <div id="header">
+      <span id="lang-chip">Loading…</span>
+      <span id="status-text">Starting…</span>
+    </div>
+
+    <div id="loading">
+      <div class="ring"></div>
+      <div id="load-msg">Loading vision model…</div>
+    </div>
+
+    <div id="err">
+      <div id="err-msg"></div>
+    </div>
   </div>
 
-  <div id="loading">
-    <div class="ring"></div>
-    <div id="load-msg">Loading vision model…</div>
-  </div>
+  <script>
+    // ─── URL params: which language to learn ────────────────────────────────
+    const params = new URLSearchParams(location.search);
+    const LANG = (params.get('lang') || 'en').toLowerCase();
+    const LANG_NAME = params.get('langName') || 'English';
+    document.getElementById('lang-chip').textContent = LANG_NAME;
 
-  <div id="err">
-    <div id="err-msg"></div>
-  </div>
-</div>
+    // ─── Simple translation dictionaries (English label -> target word) ─────
+    // 目前先支援少量常見物件，確保流程正常；後續可擴充。
+    const DICTS = {
+      'en': {              // 英文 -> 英文（當作字幕）
+        person: 'person',
+        bicycle: 'bicycle',
+        car: 'car',
+        motorcycle: 'motorcycle',
+        bus: 'bus',
+        train: 'train',
+        dog: 'dog',
+        cat: 'cat',
+        chair: 'chair',
+        laptop: 'laptop',
+        book: 'book',
+        bottle: 'bottle',
+      },
+      'ja': {              // 英文 -> 日文
+        person: '人',
+        bicycle: '自転車',
+        car: '車',
+        motorcycle: 'バイク',
+        bus: 'バス',
+        train: '電車',
+        dog: '犬',
+        cat: '猫',
+        chair: '椅子',
+        laptop: 'ノートPC',
+        book: '本',
+        bottle: '瓶',
+      },
+      'zh-tw': {           // 英文 -> 繁中
+        person: '人',
+        bicycle: '腳踏車',
+        car: '汽車',
+        motorcycle: '機車',
+        bus: '公車',
+        train: '火車',
+        dog: '狗',
+        cat: '貓',
+        chair: '椅子',
+        laptop: '筆電',
+        book: '書',
+        bottle: '瓶子',
+      },
+    };
 
-<script type="module">
-// ─── Read URL params ───────────────────────────────────────────────────────
-const sp = new URLSearchParams(location.search);
-const LANG = sp.get('lang') || 'ja';
-const LANG_NAME = sp.get('langName') || 'Japanese';
+    function translateLabel(englishLabel) {
+      const dict = DICTS[LANG] || DICTS['en'];
+      const key = englishLabel.toLowerCase();
+      return dict[key] || englishLabel;
+    }
 
-document.getElementById('lang-chip').textContent = LANG_NAME;
+    // ─── DOM refs ───────────────────────────────────────────────────────────
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const loadingEl = document.getElementById('loading');
+    const loadMsgEl = document.getElementById('load-msg');
+    const statusEl = document.getElementById('status-text');
+    const errEl = document.getElementById('err');
+    const errMsgEl = document.getElementById('err-msg');
 
-// ─── Translation dictionary ────────────────────────────────────────────────
-// [native word, romanization ('' if Latin), english label]
-const DICT = {
-  ja: {
-    person:['人','hito'], bicycle:['自転車','jitensha'], car:['車','kuruma'],
-    motorcycle:['バイク','baiku'], airplane:['飛行機','hikōki'], bus:['バス','basu'],
-    train:['電車','densha'], truck:['トラック','torakku'], boat:['ボート','bōto'],
-    bird:['鳥','tori'], cat:['猫','neko'], dog:['犬','inu'], horse:['馬','uma'],
-    cow:['牛','ushi'], sheep:['羊','hitsuji'], elephant:['象','zō'], bear:['熊','kuma'],
-    zebra:['シマウマ','shimauma'], giraffe:['キリン','kirin'],
-    backpack:['リュック','ryukku'], umbrella:['傘','kasa'],
-    handbag:['ハンドバッグ','handobaggu'], suitcase:['スーツケース','sūtsukēsu'],
-    bottle:['瓶','bin'], 'wine glass':['ワイングラス','waingurasu'],
-    cup:['コップ','koppu'], fork:['フォーク','fōku'], knife:['ナイフ','naifu'],
-    spoon:['スプーン','supūn'], bowl:['お椀','owan'], banana:['バナナ','banana'],
-    apple:['りんご','ringo'], sandwich:['サンドイッチ','sandoicchi'],
-    orange:['オレンジ','orenji'], broccoli:['ブロッコリー','burokkorī'],
-    carrot:['にんじん','ninjin'], 'hot dog':['ホットドッグ','hottodoggu'],
-    pizza:['ピザ','piza'], donut:['ドーナツ','dōnatsu'], cake:['ケーキ','kēki'],
-    chair:['椅子','isu'], couch:['ソファ','sofa'], bed:['ベッド','beddo'],
-    toilet:['トイレ','toire'], tv:['テレビ','terebi'], laptop:['ノートPC','nōto PC'],
-    mouse:['マウス','mausu'], remote:['リモコン','rimokon'],
-    keyboard:['キーボード','kībōdo'], 'cell phone':['スマホ','sumaho'],
-    microwave:['電子レンジ','denshi renji'], oven:['オーブン','ōbun'],
-    sink:['シンク','shinku'], refrigerator:['冷蔵庫','reizōko'],
-    book:['本','hon'], clock:['時計','tokei'], vase:['花瓶','kabin'],
-    scissors:['ハサミ','hasami'], toothbrush:['歯ブラシ','haburashi'],
-    'potted plant':['植木','ueki'], 'dining table':['食卓','shokutaku'],
-    'sports ball':['ボール','bōru'], kite:['凧','tako'],
-    'traffic light':['信号機','shingōki'], bench:['ベンチ','benchi'],
-    'fire hydrant':['消火栓','shōkasen'], 'stop sign':['一時停止','ichiji teishi'],
-    tie:['ネクタイ','nekutai'], 'teddy bear':['テディベア','tediibea'],
-    'hair drier':['ドライヤー','doraiyā'], skateboard:['スケボー','sukebō'],
-    surfboard:['サーフボード','sāfubōdo'], 'tennis racket':['ラケット','raketto'],
-  },
-  // 其餘語言映射略，與 assets/webview.html 原內容一致...
-};
+    function showError(msg) {
+      console.error('[Language Lens] ', msg);
+      loadingEl.style.display = 'none';
+      errEl.style.display = 'flex';
+      errMsgEl.textContent = msg;
+    }
 
-function translate(label) {
-  const tbl = DICT[LANG] || DICT['ja'];
-  return tbl[label.toLowerCase()] || null;
-}
+    // ─── MediaPipe object detector setup ───────────────────────────────────
+    let detector = null;
+    let lastVideoTime = -1;
 
-// ─── DOM ──────────────────────────────────────────────────────────────────
-const video    = document.getElementById('video');
-const canvas   = document.getElementById('overlay');
-const ctx      = canvas.getContext('2d');
-const loading  = document.getElementById('loading');
-const loadMsg  = document.getElementById('load-msg');
-const statusEl = document.getElementById('status-text');
-const errDiv   = document.getElementById('err');
-const errMsg   = document.getElementById('err-msg');
+    async function initDetector() {
+      try {
+        loadMsgEl.textContent = 'Loading object detection model…';
 
-function showError(msg) {
-  loading.style.display = 'none';
-  errDiv.style.display = 'flex';
-  errMsg.textContent = msg;
-}
+        // FilesetResolver / ObjectDetector are provided by vision_bundle.js
+        const vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+        );
 
-// ─── MediaPipe (same bundle the official text-spinner skill uses) ──────────
-import {
-  ObjectDetector,
-  FilesetResolver
-} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs';
+        detector = await ObjectDetector.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite',
+            delegate: 'CPU',
+          },
+          runningMode: 'VIDEO',
+          scoreThreshold: 0.4,
+          maxResults: 5,
+        });
+      } catch (e) {
+        showError('Failed to load object detection model. ' + e);
+        throw e;
+      }
+    }
 
-let detector = null;
-let lastTime = -1;
+    // ─── Camera setup ──────────────────────────────────────────────────────
+    async function initCamera() {
+      try {
+        loadMsgEl.textContent = 'Requesting camera access…';
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+          audio: false,
+        });
+        video.srcObject = stream;
 
-async function initDetector() {
-  loadMsg.textContent = 'Loading object detection model…';
-  const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
-  );
-  detector = await ObjectDetector.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath:
-        'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite',
-      delegate: 'CPU',
-    },
-    scoreThreshold: 0.42,
-    runningMode: 'VIDEO',
-    maxResults: 5,
-  });
-}
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => resolve();
+        });
 
-// 其餘 AR loop / drawing / boot 程式碼與原本 assets/webview.html 完全一致...
-</script>
+        resizeCanvas();
+      } catch (e) {
+        showError('Unable to access camera. Please check permissions. ' + e);
+        throw e;
+      }
+    }
+
+    function resizeCanvas() {
+      const width = video.videoWidth || canvas.clientWidth || window.innerWidth;
+      const height = video.videoHeight || canvas.clientHeight || window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    // ─── Rendering loop ────────────────────────────────────────────────────
+    function drawDetections(result) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (!result || !result.detections) return;
+
+      ctx.lineWidth = 2;
+      ctx.font = '14px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
+      ctx.textBaseline = 'bottom';
+
+      for (const det of result.detections) {
+        if (!det.boundingBox || !det.categories || !det.categories.length) continue;
+        const cat = det.categories[0];
+        if (!cat.categoryName || (cat.score != null && cat.score < 0.4)) continue;
+
+        const englishLabel = cat.categoryName;
+        const translated = translateLabel(englishLabel);
+
+        const x = det.boundingBox.originX;
+        const y = det.boundingBox.originY;
+        const w = det.boundingBox.width;
+        const h = det.boundingBox.height;
+
+        // bounding box
+        ctx.strokeStyle = 'rgba(26,115,232,0.9)';
+        ctx.strokeRect(x, y, w, h);
+
+        // label background
+        const label = translated + '  ·  ' + englishLabel;
+        const paddingX = 6;
+        const paddingY = 4;
+        const textWidth = ctx.measureText(label).width;
+        const boxX = x;
+        const boxY = Math.max(0, y - 4);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        ctx.fillRect(boxX, boxY - 20, textWidth + paddingX * 2, 20 + paddingY);
+
+        // label text
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, boxX + paddingX, boxY + 2);
+      }
+    }
+
+    async function renderLoop() {
+      if (!detector || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        requestAnimationFrame(renderLoop);
+        return;
+      }
+
+      if (video.currentTime !== lastVideoTime) {
+        const start = performance.now();
+        const result = detector.detectForVideo(video, Date.now());
+        const end = performance.now();
+        drawDetections(result);
+        statusEl.textContent = `Detecting… ${(end - start).toFixed(0)} ms`; // 簡單顯示推論時間
+        lastVideoTime = video.currentTime;
+      }
+
+      requestAnimationFrame(renderLoop);
+    }
+
+    // ─── Bootstrap ─────────────────────────────────────────────────────────
+    (async function bootstrap() {
+      try {
+        await initCamera();
+        await initDetector();
+        loadingEl.style.display = 'none';
+        statusEl.textContent = 'Point the camera at an object';
+        renderLoop();
+      } catch (e) {
+        // showError 已處理具體訊息
+        console.error('[Language Lens bootstrap error]', e);
+      }
+    })();
+  </script>
 </body>
 </html>
