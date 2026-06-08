@@ -10,20 +10,15 @@
       /**
        * AI Edge Gallery JS skill entry point.
        *
-       * ROOT CAUSE FIX (2026-06-08):
-       *   App's getJsSkillWebviewUrl() (SkillManagerViewModel.kt) always
-       *   prepends "/assets/" to whatever url this function returns:
+       * FIXES (2026-06-08 zero-trust audit):
+       *   1. Removed aspectRatio field — not present in any official built-in
+       *      skill (text-spinner, interactive-map). Unknown fields risk parse
+       *      failure on iOS Gallery.
+       *      Ref: google-ai-edge/gallery skills/built-in/text-spinner/scripts/index.html
+       *        → returns only { webview: { url } }
        *
-       *     return "$baseUrl/assets/$url"
-       *
-       *   So this script must return ONLY the filename ("webview.html"),
-       *   NOT the full relative path ("assets/webview.html").
-       *   Returning "assets/webview.html" caused the App to build:
-       *     .../assets/assets/webview.html  ← 404, webview blank, skill fails
-       *
-       *   Reference: google-ai-edge/gallery
-       *     skills/built-in/text-spinner/scripts/index.html
-       *     → url: `webview.html?label=${jsonObj.label}`  (no assets/ prefix)
+       *   2. url returns plain filename only (no assets/ prefix).
+       *      iOS App internally prepends /assets/ when resolving webview path.
        */
       window['ai_edge_gallery_get_result'] = async (dataStr, _secret) => {
         try {
@@ -40,8 +35,6 @@
 
           console.log('[language-lens] parsed: lang=' + lang + ' langName=' + langName);
 
-          // CORRECT: return plain filename only.
-          // App will resolve full path as: {baseUrl}/assets/webview.html?...
           const url =
             'webview.html' +
             '?lang='     + encodeURIComponent(lang) +
@@ -49,12 +42,10 @@
 
           console.log('[language-lens] returning webview url:', url);
 
+          // Only { webview: { url } } — matches official text-spinner pattern exactly.
+          // No aspectRatio, no result field added here intentionally.
           return JSON.stringify({
-            result: 'Opening Language Lens AR view in ' + langName + '.',
-            webview: {
-              url,
-              aspectRatio: 0.75,
-            },
+            webview: { url },
           });
         } catch (e) {
           const msg = e && e.message ? e.message : String(e);

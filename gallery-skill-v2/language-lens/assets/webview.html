@@ -98,10 +98,9 @@
       font-size: 13px;
       text-align: center;
       line-height: 1.5;
+      word-break: break-all;
     }
   </style>
-  <!-- MediaPipe Tasks Vision CDN (same version pinned across references) -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js" crossorigin="anonymous"></script>
 </head>
 <body>
   <div id="wrap">
@@ -123,9 +122,36 @@
     </div>
   </div>
 
-  <script>
+  <!--
+    ROOT CAUSE FIX (2026-06-08 zero-trust audit):
+
+    Previous code used:
+      <script src="vision_bundle.js"> (UMD)
+    and then referenced FilesetResolver / ObjectDetector directly.
+
+    The UMD bundle does NOT expose these on window directly —
+    they live under a mediapipe namespace or are not accessible at all.
+    This caused:
+      TypeError: FilesetResolver is not a function
+    which silently killed the bootstrap() and Gallery returned
+    "encountered an error".
+
+    FIX: Use vision_bundle.mjs (ES module) with named imports,
+    exactly as the official text-spinner/assets/webview.html does:
+      import { FaceLandmarker, FilesetResolver }
+      from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs"
+
+    Ref: google-ai-edge/gallery
+      skills/built-in/text-spinner/assets/webview.html
+  -->
+  <script type="module">
+    import {
+      FilesetResolver,
+      ObjectDetector
+    } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs';
+
     // ── URL params ────────────────────────────────────────────────────────────
-    const params = new URLSearchParams(location.search);
+    const params   = new URLSearchParams(location.search);
     const LANG      = (params.get('lang')     || 'en').toLowerCase();
     const LANG_NAME =  params.get('langName') || 'English';
     document.getElementById('lang-chip').textContent = LANG_NAME;
@@ -143,20 +169,20 @@
       'ja': {
         person:'人', bicycle:'自転車', car:'車', motorcycle:'バイク',
         bus:'バス', train:'電車', dog:'犬', cat:'猫', chair:'椅子',
-        laptop:'ノートPC', book:'本', bottle:'瓶', cup:'コップ', phone:'電話',
+        laptop:'ノーPC', book:'本', bottle:'瓶', cup:'コップ', phone:'電話',
         keyboard:'キーボード', mouse:'マウス', tv:'テレビ', couch:'ソファ', table:'テーブル',
       },
       'ko': {
         person:'사람', bicycle:'자전거', car:'자동차', motorcycle:'오토바이',
         bus:'버스', train:'기차', dog:'개', cat:'고양이', chair:'의자',
-        laptop:'노트북', book:'책', bottle:'병', cup:'컵', phone:'전화기',
+        laptop:'노트북', book:'책', bottle:'병', cup:'콤', phone:'전화기',
         keyboard:'키보드', mouse:'마우스', tv:'TV', couch:'소파', table:'테이블',
       },
       'zh': {
-        person:'人', bicycle:'自行车', car:'汽车', motorcycle:'摩托车',
-        bus:'公交车', train:'火车', dog:'狗', cat:'猫', chair:'椅子',
-        laptop:'笔记本', book:'书', bottle:'瓶子', cup:'杯子', phone:'手机',
-        keyboard:'键盘', mouse:'鼠标', tv:'电视', couch:'沙发', table:'桌子',
+        person:'人', bicycle:'自行車', car:'汽車', motorcycle:'機車',
+        bus:'公車', train:'火車', dog:'狗', cat:'貓', chair:'椅子',
+        laptop:'筆記型電腦', book:'書本', bottle:'瓶子', cup:'杯子', phone:'手機',
+        keyboard:'鍵盤', mouse:'滑鼠', tv:'電視', couch:'沙發', table:'桌子',
       },
       'es': {
         person:'persona', bicycle:'bicicleta', car:'coche', motorcycle:'moto',
@@ -212,14 +238,13 @@
     }
 
     // ── MediaPipe object detector ─────────────────────────────────────────────
-    let detector     = null;
+    let detector      = null;
     let lastVideoTime = -1;
 
     async function initDetector() {
       loadMsgEl.textContent = 'Loading object detection model…';
       console.log('[Language Lens] initDetector start');
 
-      // vision_bundle.js exposes FilesetResolver / ObjectDetector on window
       const vision = await FilesetResolver.forVisionTasks(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
       );
@@ -278,18 +303,15 @@
         const label      = translated + '  ·  ' + cat.categoryName;
         const { originX: x, originY: y, width: w, height: h } = det.boundingBox;
 
-        // bounding box
         ctx.strokeStyle = 'rgba(26,115,232,0.9)';
         ctx.strokeRect(x, y, w, h);
 
-        // label background
         const tw   = ctx.measureText(label).width;
         const px   = 6, py = 4, lh = 20;
         const boxY = Math.max(lh + py, y);
         ctx.fillStyle = 'rgba(0,0,0,0.75)';
         ctx.fillRect(x, boxY - lh - py, tw + px * 2, lh + py);
 
-        // label text
         ctx.fillStyle = '#fff';
         ctx.fillText(label, x + px, boxY);
       }
