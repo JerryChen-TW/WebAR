@@ -7,7 +7,7 @@ description: Open a live AR camera that detects real-world objects and labels th
 
 Please use the run_js tool with the following exact parameters:
 
-- script name: `scripts/index.js`
+- script name: `scripts/index.html`
 - data: A JSON string with the following fields:
   - language: the language code the user wants to learn. One of: `ja` (Japanese), `ko` (Korean), `zh` (Chinese), `es` (Spanish), `fr` (French), `de` (German), `th` (Thai), `vi` (Vietnamese), `en` (English).
   - languageName: the full English name of that language (e.g. `Japanese`).
