@@ -13,5 +13,3 @@ Please use the run_js tool with the following exact parameters:
   - languageName: the full English name of that language (e.g. `Japanese`).
 
 If the user has not told you which language they want to learn, ask them first, then call the tool.
-
----
