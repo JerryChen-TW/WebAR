@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Language Lens AR</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      width: 100vw;
+      height: 100vh;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+    #video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    #header {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 10;
+      padding: 10px 12px 8px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #lang-chip {
+      background: #1a73e8;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      letter-spacing: 0.3px;
+    }
+    #status-text {
+      color: rgba(255,255,255,0.85);
+      font-size: 12px;
+    }
+    #loading {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      background: rgba(0,0,0,0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+    .ring {
+      width: 44px; height: 44px;
+      border: 3px solid rgba(255,255,255,0.18);
+      border-top-color: #1a73e8;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #load-msg {
+      color: rgba(255,255,255,0.75);
+      font-size: 14px;
+      text-align: center;
+      padding: 0 24px;
+    }
+    #err {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      gap: 12px;
+      z-index: 30;
+    }
+    #err-msg {
+      color: #f28b82;
+      font-size: 13px;
+      text-align: center;
+      line-height: 1.5;
+    }
+  </style>
+  <!-- MediaPipe Tasks Vision CDN (same version pinned across references) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+
+    <div id="header">
+      <span id="lang-chip">Loading…</span>
+      <span id="status-text">Starting…</span>
+    </div>
+
+    <div id="loading">
+      <div class="ring"></div>
+      <div id="load-msg">Loading vision model…</div>
+    </div>
+
+    <div id="err">
+      <div id="err-msg"></div>
+    </div>
+  </div>
+
+  <script>
+    // ── URL params ────────────────────────────────────────────────────────────
+    const params = new URLSearchParams(location.search);
+    const LANG      = (params.get('lang')     || 'en').toLowerCase();
+    const LANG_NAME =  params.get('langName') || 'English';
+    document.getElementById('lang-chip').textContent = LANG_NAME;
+
+    console.log('[Language Lens webview] lang=' + LANG + ' langName=' + LANG_NAME);
+
+    // ── Translation dictionaries ──────────────────────────────────────────────
+    const DICTS = {
+      'en': {
+        person:'person', bicycle:'bicycle', car:'car', motorcycle:'motorcycle',
+        bus:'bus', train:'train', dog:'dog', cat:'cat', chair:'chair',
+        laptop:'laptop', book:'book', bottle:'bottle', cup:'cup', phone:'phone',
+        keyboard:'keyboard', mouse:'mouse', tv:'tv', couch:'couch', table:'table',
+      },
+      'ja': {
+        person:'人', bicycle:'自転車', car:'車', motorcycle:'バイク',
+        bus:'バス', train:'電車', dog:'犬', cat:'猫', chair:'椅子',
+        laptop:'ノートPC', book:'本', bottle:'瓶', cup:'コップ', phone:'電話',
+        keyboard:'キーボード', mouse:'マウス', tv:'テレビ', couch:'ソファ', table:'テーブル',
+      },
+      'ko': {
+        person:'사람', bicycle:'자전거', car:'자동차', motorcycle:'오토바이',
+        bus:'버스', train:'기차', dog:'개', cat:'고양이', chair:'의자',
+        laptop:'노트북', book:'책', bottle:'병', cup:'컵', phone:'전화기',
+        keyboard:'키보드', mouse:'마우스', tv:'TV', couch:'소파', table:'테이블',
+      },
+      'zh': {
+        person:'人', bicycle:'自行车', car:'汽车', motorcycle:'摩托车',
+        bus:'公交车', train:'火车', dog:'狗', cat:'猫', chair:'椅子',
+        laptop:'笔记本', book:'书', bottle:'瓶子', cup:'杯子', phone:'手机',
+        keyboard:'键盘', mouse:'鼠标', tv:'电视', couch:'沙发', table:'桌子',
+      },
+      'es': {
+        person:'persona', bicycle:'bicicleta', car:'coche', motorcycle:'moto',
+        bus:'autobús', train:'tren', dog:'perro', cat:'gato', chair:'silla',
+        laptop:'portátil', book:'libro', bottle:'botella', cup:'taza', phone:'teléfono',
+        keyboard:'teclado', mouse:'ratón', tv:'televisión', couch:'sofá', table:'mesa',
+      },
+      'fr': {
+        person:'personne', bicycle:'vélo', car:'voiture', motorcycle:'moto',
+        bus:'bus', train:'train', dog:'chien', cat:'chat', chair:'chaise',
+        laptop:'ordinateur', book:'livre', bottle:'bouteille', cup:'tasse', phone:'téléphone',
+        keyboard:'clavier', mouse:'souris', tv:'télévision', couch:'canapé', table:'table',
+      },
+      'de': {
+        person:'Person', bicycle:'Fahrrad', car:'Auto', motorcycle:'Motorrad',
+        bus:'Bus', train:'Zug', dog:'Hund', cat:'Katze', chair:'Stuhl',
+        laptop:'Laptop', book:'Buch', bottle:'Flasche', cup:'Tasse', phone:'Telefon',
+        keyboard:'Tastatur', mouse:'Maus', tv:'Fernseher', couch:'Sofa', table:'Tisch',
+      },
+      'th': {
+        person:'คน', bicycle:'จักรยาน', car:'รถยนต์', motorcycle:'มอเตอร์ไซค์',
+        bus:'รถบัส', train:'รถไฟ', dog:'สุนัข', cat:'แมว', chair:'เก้าอี้',
+        laptop:'โน้ตบุ๊ก', book:'หนังสือ', bottle:'ขวด', cup:'ถ้วย', phone:'โทรศัพท์',
+      },
+      'vi': {
+        person:'người', bicycle:'xe đạp', car:'xe hơi', motorcycle:'xe máy',
+        bus:'xe buýt', train:'tàu hỏa', dog:'chó', cat:'mèo', chair:'ghế',
+        laptop:'máy tính', book:'sách', bottle:'chai', cup:'cốc', phone:'điện thoại',
+      },
+    };
+
+    function translateLabel(englishLabel) {
+      const dict = DICTS[LANG] || DICTS['en'];
+      const key  = englishLabel.toLowerCase();
+      return dict[key] || englishLabel;
+    }
+
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+    const video     = document.getElementById('video');
+    const canvas    = document.getElementById('overlay');
+    const ctx       = canvas.getContext('2d');
+    const loadingEl = document.getElementById('loading');
+    const loadMsgEl = document.getElementById('load-msg');
+    const statusEl  = document.getElementById('status-text');
+    const errEl     = document.getElementById('err');
+    const errMsgEl  = document.getElementById('err-msg');
+
+    function showError(msg) {
+      console.error('[Language Lens]', msg);
+      loadingEl.style.display = 'none';
+      errEl.style.display = 'flex';
+      errMsgEl.textContent = msg;
+    }
+
+    // ── MediaPipe object detector ─────────────────────────────────────────────
+    let detector     = null;
+    let lastVideoTime = -1;
+
+    async function initDetector() {
+      loadMsgEl.textContent = 'Loading object detection model…';
+      console.log('[Language Lens] initDetector start');
+
+      // vision_bundle.js exposes FilesetResolver / ObjectDetector on window
+      const vision = await FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+      );
+
+      detector = await ObjectDetector.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite',
+          delegate: 'CPU',
+        },
+        runningMode: 'VIDEO',
+        scoreThreshold: 0.4,
+        maxResults: 5,
+      });
+
+      console.log('[Language Lens] detector ready');
+    }
+
+    // ── Camera ────────────────────────────────────────────────────────────────
+    async function initCamera() {
+      loadMsgEl.textContent = 'Requesting camera access…';
+      console.log('[Language Lens] initCamera start');
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      video.srcObject = stream;
+
+      await new Promise((resolve) => { video.onloadedmetadata = resolve; });
+      resizeCanvas();
+      console.log('[Language Lens] camera ready', video.videoWidth, video.videoHeight);
+    }
+
+    function resizeCanvas() {
+      canvas.width  = video.videoWidth  || window.innerWidth;
+      canvas.height = video.videoHeight || window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // ── Render loop ───────────────────────────────────────────────────────────
+    function drawDetections(result) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!result || !result.detections) return;
+
+      ctx.lineWidth    = 2;
+      ctx.font         = 'bold 14px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.textBaseline = 'bottom';
+
+      for (const det of result.detections) {
+        if (!det.boundingBox || !det.categories?.length) continue;
+        const cat = det.categories[0];
+        if (!cat.categoryName || (cat.score ?? 1) < 0.4) continue;
+
+        const translated = translateLabel(cat.categoryName);
+        const label      = translated + '  ·  ' + cat.categoryName;
+        const { originX: x, originY: y, width: w, height: h } = det.boundingBox;
+
+        // bounding box
+        ctx.strokeStyle = 'rgba(26,115,232,0.9)';
+        ctx.strokeRect(x, y, w, h);
+
+        // label background
+        const tw   = ctx.measureText(label).width;
+        const px   = 6, py = 4, lh = 20;
+        const boxY = Math.max(lh + py, y);
+        ctx.fillStyle = 'rgba(0,0,0,0.75)';
+        ctx.fillRect(x, boxY - lh - py, tw + px * 2, lh + py);
+
+        // label text
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, x + px, boxY);
+      }
+    }
+
+    async function renderLoop() {
+      if (!detector || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        requestAnimationFrame(renderLoop);
+        return;
+      }
+      if (video.currentTime !== lastVideoTime) {
+        const t0     = performance.now();
+        const result = detector.detectForVideo(video, Date.now());
+        drawDetections(result);
+        statusEl.textContent = 'Detecting… ' + (performance.now() - t0).toFixed(0) + ' ms';
+        lastVideoTime = video.currentTime;
+      }
+      requestAnimationFrame(renderLoop);
+    }
+
+    // ── Bootstrap ─────────────────────────────────────────────────────────────
+    (async function bootstrap() {
+      try {
+        await initCamera();
+        await initDetector();
+        loadingEl.style.display = 'none';
+        statusEl.textContent = 'Point camera at an object';
+        renderLoop();
+      } catch (e) {
+        showError(String(e));
+      }
+    })();
+  </script>
+</body>
+</html>
