@@ -12,11 +12,13 @@
       // with appropriate query parameters.
       window['ai_edge_gallery_get_result'] = async (dataStr, _secret) => {
         try {
+          console.log('[language-lens] JS skill invoked with data:', dataStr);
           let lang = 'en';
           let langName = 'English';
 
           if (dataStr) {
             const obj = JSON.parse(typeof dataStr === 'string' ? dataStr : String(dataStr));
+            console.log('[language-lens] Parsed data object:', obj);
             if (obj && obj.language) lang = String(obj.language);
             if (obj && obj.languageName) langName = String(obj.languageName);
           }
@@ -27,6 +29,8 @@
             '&langName=' +
             encodeURIComponent(langName);
 
+          console.log('[language-lens] Returning webview URL:', url);
+
           return JSON.stringify({
             result: 'Starting Language Lens AR view for ' + langName + ' (' + lang + ').',
             webview: {
@@ -36,7 +40,7 @@
           });
         } catch (e) {
           const msg = e && e.message ? e.message : String(e);
-          console.error('language-lens skill error', e);
+          console.error('[language-lens] JS skill error:', e);
           return JSON.stringify({ error: 'language-lens skill error: ' + msg });
         }
       };
