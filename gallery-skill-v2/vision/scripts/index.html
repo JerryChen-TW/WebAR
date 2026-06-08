@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#000000" />
+  <title>AR Language Learner</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="container">
+
+    <!-- Camera feed -->
+    <video id="video" autoplay playsinline muted></video>
+
+    <!-- AR overlay -->
+    <canvas id="canvas"></canvas>
+
+    <!-- Top bar -->
+    <div id="topbar">
+      <span id="app-title">AR Lens</span>
+      <div id="lang-selector">
+        <button id="lang-btn">
+          <span class="lang-label">English</span>
+        </button>
+        <div id="lang-menu"></div>
+      </div>
+    </div>
+
+    <!-- Object count badge -->
+    <div id="count-badge"></div>
+
+    <!-- Status bar -->
+    <div id="status" class="hidden"></div>
+
+    <!-- Loading overlay -->
+    <div id="loading">
+      <div class="spinner"></div>
+      <div id="loading-text">Starting camera…</div>
+    </div>
+
+    <!-- Camera error -->
+    <div id="cam-error">
+      <h2>Camera Access Needed</h2>
+      <p>Please allow camera access to use AR object detection.<br/>Open site settings and enable camera permission.</p>
+      <button id="retry-btn">Try Again</button>
+    </div>
+
+  </div>
+
+  <script src="labels.js"></script>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
