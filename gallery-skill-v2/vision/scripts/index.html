@@ -40,12 +40,6 @@
             border-radius: 8px;
             display: none;
         }
-        
-        .loading {
-            text-align: center;
-            color: #4ecca3;
-            font-size: 14px;
-        }
     </style>
 </head>
 <body>
@@ -66,36 +60,28 @@
         const detectBtn = document.getElementById('detectBtn');
         const resultBox = document.getElementById('resultBox');
 
-        // 初始化模型
         async function initModel() {
             try {
                 const { ObjectDetector, FilesetResolver } = await import(
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3"
                 );
-                
                 const vision = await FilesetResolver.forVisionTasks(
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
                 );
-                
                 objectDetector = await ObjectDetector.createFromOptions(vision, {
                     baseOptions: {
-                        modelAssetPath: 
-                            "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite",
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite",
                         delegate: "GPU"
                     },
                     scoreThreshold: 0.5,
                     runningMode: "IMAGE"
                 });
-                
-                console.log('✅ 模型載入完成');
                 return true;
             } catch (error) {
-                console.error('❌ 模型載入失敗:', error);
                 throw error;
             }
         }
 
-        // 停止相機
         function stopCamera() {
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
@@ -105,117 +91,85 @@
             videoElement.style.display = 'none';
         }
 
-        // 執行偵測（由使用者點擊觸發）
         async function performDetection() {
             detectBtn.disabled = true;
             detectBtn.textContent = '⏳ 辨識中...';
-            
             try {
                 if (!objectDetector) await initModel();
-
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "environment" } 
                 });
-                
                 currentStream = stream;
                 videoElement.srcObject = stream;
                 videoElement.style.display = 'block';
-                
                 await new Promise(resolve => {
                     if (videoElement.readyState >= 1) resolve();
                     else videoElement.onplay = resolve;
                 });
-
                 const detections = objectDetector.detect(videoElement);
-                
                 const filteredDetections = detections.detections.filter(d => 
                     d.categories.length > 0 && d.categories[0].score >= 0.5
                 );
-
                 if (filteredDetections.length > 0) {
                     const labels = filteredDetections.map(d => 
                         `${d.categories[0].categoryName} (${Math.round(d.categories[0].score * 100)}%)`
                     ).join(', ');
-                    
                     resultBox.style.display = 'block';
                     resultBox.innerHTML = `<strong>✅ 偵測到：</strong><br>${labels}`;
-                    
                     setTimeout(() => {
                         stopCamera();
-                        returnResult(`我偵測到畫面有：${labels}`, filteredDetections);
+                        window['ai_edge_gallery_get_result'](JSON.stringify({
+                            result: `我偵測到畫面有：${labels}`,
+                            detections: filteredDetections.map(d => ({
+                                categoryName: d.categories[0].categoryName,
+                                score: parseFloat(d.categories[0].score.toFixed(2)),
+                                boundingBox: {
+                                    xMin: parseFloat(d.boundingBox.xMin.toFixed(3)),
+                                    yMin: parseFloat(d.boundingBox.yMin.toFixed(3)),
+                                    xMax: parseFloat(d.boundingBox.xMax.toFixed(3)),
+                                    yMax: parseFloat(d.boundingBox.yMax.toFixed(3))
+                                }
+                            }))
+                        }));
                     }, 2000);
                 } else {
                     resultBox.style.display = 'block';
                     resultBox.innerHTML = '<strong>❌</strong> 未偵測到明顯物件';
-                    
                     setTimeout(() => {
                         stopCamera();
-                        returnResult("畫面入面冇明顯嘅物件。", []);
+                        window['ai_edge_gallery_get_result'](JSON.stringify({ result: "畫面中沒有明顯的物件。" }));
                     }, 2000);
                 }
-
             } catch (error) {
-                console.error('偵測錯誤:', error);
                 resultBox.style.display = 'block';
-                
                 let errorMsg = `❌ 辨識失敗：${error.message}`;
                 if (error.name === 'NotAllowedError') {
                     errorMsg = "❌ 無法存取相機<br><small>請在設定中允許相機權限</small>";
                 }
-                
                 resultBox.innerHTML = errorMsg;
-                
                 setTimeout(() => {
                     stopCamera();
-                    returnResult(null, null, errorMsg);
+                    window['ai_edge_gallery_get_result'](JSON.stringify({ error: errorMsg }));
                 }, 2000);
             }
-
             detectBtn.disabled = false;
             detectBtn.textContent = '📷 開始偵測';
         }
 
-        function returnResult(resultText, detections, error) {
-            const response = {};
-            
-            if (error) {
-                response.error = error;
-            } else {
-                response.result = resultText;
-                if (detections && detections.length > 0) {
-                    response.detections = detections.map(d => ({
-                        categoryName: d.categories[0].categoryName,
-                        score: parseFloat(d.categories[0].score.toFixed(2)),
-                        boundingBox: {
-                            xMin: parseFloat(d.boundingBox.xMin.toFixed(3)),
-                            yMin: parseFloat(d.boundingBox.yMin.toFixed(3)),
-                            xMax: parseFloat(d.boundingBox.xMax.toFixed(3)),
-                            yMax: parseFloat(d.boundingBox.yMax.toFixed(3))
-                        }
-                    }));
-                }
-            }
-            
-            window['ai_edge_gallery_get_result'](JSON.stringify(response));
-        }
-
+        // Entry point called by Gallery
         window['ai_edge_gallery_get_result'] = async (data) => {
             const params = JSON.parse(data);
-            const facingMode = params.facingMode || "environment";
-            
             initModel().catch(err => console.warn('預載失敗:', err));
-            
             return JSON.stringify({
                 result: "請在下方介面點擊「開始偵測」按鈕",
                 webview: {
-                    url: "index.html?facingMode=" + facingMode,
+                    url: "scripts/index.html?facingMode=" + (params.facingMode || "environment"),
                     aspectRatio: 1.333
                 }
             });
         };
 
         detectBtn.addEventListener('click', performDetection);
-        
         initModel().catch(err => console.warn('預載模型失敗:', err));
     </script>
 </body>

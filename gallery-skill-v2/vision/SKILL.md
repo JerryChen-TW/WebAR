@@ -17,7 +17,7 @@ metadata:
 ## Instructions
 
 Call the `run_js` tool with the following exact parameters:
-- script name: index.html
+- script name: scripts/index.html
 - data: A JSON string with the following fields:
   - facingMode: String (optional). Camera to use. Values: "environment" (後鏡頭), "user" (前鏡頭). Default: "environment".
 
