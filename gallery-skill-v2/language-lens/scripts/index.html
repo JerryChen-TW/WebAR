@@ -9,15 +9,21 @@
     <script>
       /**
        * AI Edge Gallery JS skill entry point.
-       * Called by the Gallery Android runtime with a stringified JSON payload.
-       * Must return a stringified JSON object.
        *
-       * Official structure reference:
-       *   skills/built-in/text-spinner/scripts/index.html (google-ai-edge/gallery)
-       *   → webview.html lives in assets/, script returns url: "assets/webview.html?..."
+       * ROOT CAUSE FIX (2026-06-08):
+       *   App's getJsSkillWebviewUrl() (SkillManagerViewModel.kt) always
+       *   prepends "/assets/" to whatever url this function returns:
        *
-       * Key fix: webview.html MUST be inside assets/ and the url MUST include the
-       * assets/ prefix so the Gallery host can resolve the local file correctly.
+       *     return "$baseUrl/assets/$url"
+       *
+       *   So this script must return ONLY the filename ("webview.html"),
+       *   NOT the full relative path ("assets/webview.html").
+       *   Returning "assets/webview.html" caused the App to build:
+       *     .../assets/assets/webview.html  ← 404, webview blank, skill fails
+       *
+       *   Reference: google-ai-edge/gallery
+       *     skills/built-in/text-spinner/scripts/index.html
+       *     → url: `webview.html?label=${jsonObj.label}`  (no assets/ prefix)
        */
       window['ai_edge_gallery_get_result'] = async (dataStr, _secret) => {
         try {
@@ -34,17 +40,17 @@
 
           console.log('[language-lens] parsed: lang=' + lang + ' langName=' + langName);
 
-          // Cache-bust with timestamp so the webview always reloads fresh,
-          // matching the pattern used by virtual-piano (google-ai-edge/gallery).
+          // CORRECT: return plain filename only.
+          // App will resolve full path as: {baseUrl}/assets/webview.html?...
           const url =
-            'assets/webview.html' +
+            'webview.html' +
             '?lang='     + encodeURIComponent(lang) +
-            '&langName=' + encodeURIComponent(langName) +
-            '&v='        + Date.now();
+            '&langName=' + encodeURIComponent(langName);
 
           console.log('[language-lens] returning webview url:', url);
 
           return JSON.stringify({
+            result: 'Opening Language Lens AR view in ' + langName + '.',
             webview: {
               url,
               aspectRatio: 0.75,
